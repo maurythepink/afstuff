@@ -5,7 +5,7 @@ import argparse
 from pathlib import Path
 import json
 from enum import Enum, auto
-from typing import Union, Optional, Iterator
+from typing import Union, Optional, Iterator, Generator
 
 
 class FileType(Enum):
@@ -42,16 +42,31 @@ class FileType(Enum):
         raise ValueError(f'Source type ({type_name}) not recognized. Choose one from: {FileType.names_string()}')
 
     def make_json_data(self, source_path: Path) -> Optional[Iterator[dict]]:
-        if self is FileType.json:
-            with source_path.open('r') as json_file:
-                _row_json_data = json.loads(json_file.read())
-                return (_v for _, _v in _row_json_data.items())
+        with source_path.open('r') as source_file:
+            if self is FileType.json:
+                _row_json_data = json.loads(source_file.read())
+                return (_value for _, _value in _row_json_data.items())
+            elif self is FileType.l2tcsv or self is FileType.dynamic:
+                _lines = source_file.readlines()
+                _keys = _lines[0].split(',')
+                for _line in _lines[1:]:
+                    yield {_keys[_i]: _line.split(',')[_i] for _i in range(len(_keys))}
         return None
 
 
 class DataSet:
     def __init__(self, source_path: Path, file_type: FileType):
-        self.json_data = file_type.make_json_data(source_path)
+        self.file_type = file_type
+        self.source_path = source_path
+
+    @property
+    def json_data(self) -> Iterator[dict]:
+        return self.file_type.make_json_data(self.source_path)
+
+    @property
+    def keys(self) -> list[str]:
+        for _item in self.json_data:
+            return list(_item.keys())
 
 
 ap = argparse.ArgumentParser(prog='AF Stuff', usage='usage')
@@ -86,10 +101,7 @@ data = DataSet(args.source_file, args.source_type)
 
 if __name__ == '__main__':
     i = 0
-    for _d in data.json_data:
-        print('------------' * 15)
-        for _k, _v in _d.items():
-            print(f'{_k}\n\t{_v}')
-        i += 1
+    for _d in data.keys:
+        print(_d)
         if i == 10:
             break
