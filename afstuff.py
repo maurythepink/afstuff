@@ -3,14 +3,67 @@
 
 import argparse
 from pathlib import Path
+import json
 from enum import Enum, auto
+from typing import Union, Optional, Iterator
+
+
+class FileType(Enum):
+    json = auto()
+    l2tcsv = auto()
+    # xlsx = auto()
+    # l2ttln = auto()
+    # elastic = auto()
+    #4n6time_sqlite = auto()
+    # kml = auto()
+    dynamic = auto()
+    # rawpy = auto()
+    # tln = auto()
+    json_line = auto()
+
+    @staticmethod
+    def names_string() -> str:
+        return f'{", ".join((_type.name for _type in FileType))}'
+
+    @staticmethod
+    def infer_form_file_name(path: Union[str, Path]):
+        _file_name = path if type(path) is str else str(path)
+        for _t in FileType:
+            if _file_name[-(len(_t.name) + 1):] == f'.{_t.name}':
+                return _t
+        raise ValueError(f'Cannot recognize the file type. Use the -t option to specify one, or change the extension '
+                         f'in one from: {FileType.names_string()}.')
+
+    @staticmethod
+    def from_string(type_name: str):
+        for _t in FileType:
+            if type_name == _t.name:
+                return _t
+        raise ValueError(f'Source type ({type_name}) not recognized. Choose one from: {FileType.names_string()}')
+
+    def make_json_data(self, source_path: Path) -> Optional[Iterator[dict]]:
+        if self is FileType.json:
+            with source_path.open('r') as json_file:
+                _row_json_data = json.loads(json_file.read())
+                return (_v for _, _v in _row_json_data.items())
+        return None
+
+
+class DataSet:
+    def __init__(self, source_path: Path, file_type: FileType):
+        self.json_data = file_type.make_json_data(source_path)
 
 
 ap = argparse.ArgumentParser(prog='AF Stuff', usage='usage')
 ap.add_argument('source',
                 type=str,
-                help='Source file',
+                help=f'Source file. Available types: {FileType.names_string()}. Types can be '
+                     f'defined naming the extensions as the chosen type (es: dump.json_line)',
                 action='store')
+ap.add_argument('-t --source-type',
+                dest='source_type',
+                type=str,
+                help=f'Specify the source type ({FileType.names_string()})')
 
 
 class ParsedArgs:
@@ -20,13 +73,23 @@ class ParsedArgs:
         if not _source_file.exists():
             raise ValueError(f'File at path \'{_source_file}\' does not exist!')
         self.source_file = _source_file
+        _source_type = _parsed_args.source_type
+        if _source_type is not None:
+            self.source_type = FileType.from_string(_source_type)
+        else:
+            self.source_type = FileType.infer_form_file_name(self.source_file)
 
 
 args = ParsedArgs()
+data = DataSet(args.source_file, args.source_type)
 
 
 if __name__ == '__main__':
-    print(args.source_file)
-
-
-
+    i = 0
+    for _d in data.json_data:
+        print('------------' * 15)
+        for _k, _v in _d.items():
+            print(f'{_k}\n\t{_v}')
+        i += 1
+        if i == 10:
+            break
