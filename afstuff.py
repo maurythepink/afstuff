@@ -9,6 +9,10 @@ from enum import Enum, auto
 from typing import Union, Optional, Iterator, Generator, Callable
 
 
+def regex_options_string(string_list: list[str]) -> str:
+    return '|'.join((f'({_s})' for _s in string_list))
+
+
 class FileType(Enum):
     json = auto()
     l2tcsv = auto()
@@ -80,6 +84,11 @@ ap.add_argument('-t --source-type',
                 dest='source_type',
                 type=str,
                 help=f'Specify the source type ({FileType.names_string()})')
+ap.add_argument('-f --filter',
+                dest='filter_string',
+                type=str,
+                action='store',
+                help='filter string, like \'message contains \"https:\"\'')
 
 
 class ParsedArgs:
@@ -94,6 +103,7 @@ class ParsedArgs:
             self.source_type = FileType.from_string(_source_type)
         else:
             self.source_type = FileType.infer_form_file_name(self.source_file)
+        self.filter_string = _parsed_args.filter_string
 
 
 args = ParsedArgs()
@@ -155,13 +165,33 @@ class Operation(Enum):
             return _opr
 
 
+class BaseFilter:
+    def __init__(self, base_string: str):
+        _re_pattern = re.compile(r'(?P<key>' +
+                                     regex_options_string(data.keys) +
+                                     r') (?P<op>' +
+                                     regex_options_string([v.symbol for v in Operation]) +
+                                     r') (?P<q>[\"\'])(?P<filter>[^(?P=q)]+)(?P=q)')
+        _match_dict = _re_pattern.search(base_string).groupdict()
+        self.key = _match_dict.get('key')
+        self.operation_on_value = Operation.from_symbol(_match_dict.get('op')).\
+            get_operation_function(_match_dict.get('filter'))
+
+    def match_on_dict(self, the_dict: dict) -> bool:
+        for kk, vv in the_dict.items():
+            if kk == self.key and self.operation_on_value(vv):
+                return True
+        return False
+
+
+
 query = '(message contains "https:" or message contains "url") and date > "2020-01-01 00:00:00"'
 
 
 if __name__ == '__main__':
-    op = Operation.IREGEX.get_operation_function('HTTPS')
-    op2 = Operation.CONTAINS.get_operation_function('~U:neo')
-    for dict_element in data.json_data:
-        for dict_key, dict_value in dict_element.items():
-            if op(dict_value) and op2(dict_value):
-                print(f'{"-" * 50}\n{dict_key}\n\n\t{dict_value}\n')
+    bs = BaseFilter(args.filter_string) if args.filter_string is not None else None
+    for element in data.json_data:
+        for key, value in element.items():
+            if bs is None or bs.match_on_dict(element):
+                print(f'{"-" * 100}\n{key}\n\t{value}')
+
