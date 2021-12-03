@@ -2,10 +2,11 @@
 
 
 import argparse
+import re
 from pathlib import Path
 import json
 from enum import Enum, auto
-from typing import Union, Optional, Iterator, Generator
+from typing import Union, Optional, Iterator, Generator, Callable
 
 
 class FileType(Enum):
@@ -99,9 +100,68 @@ args = ParsedArgs()
 data = DataSet(args.source_file, args.source_type)
 
 
+class Operation(Enum):
+    CONTAINS = auto()
+    IS = auto()
+    EQ = auto()
+    REGEX = auto()
+    IREGEX = auto()
+
+    @property
+    def symbol(self) -> str:
+        if self is Operation.CONTAINS:
+            return 'contains'
+        elif self is Operation.IS:
+            return 'is'
+        elif self is Operation.EQ:
+            return '=='
+        elif self is Operation.REGEX:
+            return 'regex'
+        elif self is Operation.IREGEX:
+            return 'iregex'
+        else:
+            raise ValueError('Missing!!')
+
+    @staticmethod
+    def from_symbol(symbol: str):
+        for _op in Operation:
+            if symbol == _op.symbol:
+                return _op
+        raise ValueError(f'The symbol \'{symbol}\' is not valid for operations. Valid symbols: '
+                         f'{", ".join([_s for _s in Operation])}')
+
+    def get_operation_function(self, test_string: str) -> Callable[[str], bool]:
+        if self is Operation.CONTAINS:
+            def _opr(_arg: str):
+                return test_string in _arg
+            return _opr
+        elif self is Operation.IS:
+            def _opr(_arg: str):
+                return test_string is _arg
+            return _opr
+        elif self is Operation.EQ:
+            def _opr(_arg: str):
+                return test_string == _arg
+            return _opr
+        elif self is Operation.REGEX:
+            def _opr(_arg: str):
+                _re_pattern = re.compile(test_string)
+                return _re_pattern.search(_arg) is not None
+            return _opr
+        elif self is Operation.IREGEX:
+            def _opr(_arg: str):
+                _re_pattern = re.compile(test_string, re.RegexFlag.I)
+                return _re_pattern.search(_arg) is not None
+            return _opr
+
+
+query = '(message contains "https:" or message contains "url") and date > "2020-01-01 00:00:00"'
+
+
 if __name__ == '__main__':
-    i = 0
-    for _d in data.keys:
-        print(_d)
-        if i == 10:
-            break
+    op = Operation.IREGEX.get_operation_function('HTTPS')
+    op2 = Operation.CONTAINS.get_operation_function('~U:neo')
+    for dict_element in data.json_data:
+        for dict_key, dict_value in dict_element.items():
+            if op(dict_value) and op2(dict_value):
+                print(f'{"-" * 50}\n{dict_key}\n\n\t{dict_value}\n')
