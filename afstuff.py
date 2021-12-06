@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 
 
+from datetime import datetime
 import argparse
 import re
 from pathlib import Path
@@ -80,7 +81,7 @@ EVIDENCE_OF_LOG_FILES = "\
 message contains 'EVT' or \
 message contains 'XP Firewall Log' or \
 message contains 'Event Level:' or \
-source_long contains'EVT'"
+source_long contains 'EVT'"
 
 
 def regex_options_string(string_list: list[str]) -> str:
@@ -148,7 +149,12 @@ class DataSet:
             return list(_item.keys())
 
 
-ap = argparse.ArgumentParser(prog='AF Stuff', usage='usage')
+ap = argparse.ArgumentParser(prog='AF Stuff', usage='this tool is a facility for applying filters on plaso psort '
+                                                    'outputs. It contains the pre-made filters built for specific '
+                                                    'evidence production. Es: Evidence of execution, deletion, file '
+                                                    'opening, etc.. You shoud use this tool with the default psort '
+                                                    'output, the one with type \'dynamic\', adding the extension '
+                                                    '\'.dynamic\' at the end of the csv file name.')
 ap.add_argument('source',
                 type=str,
                 help=f'Source file. Available types: {FileType.names_string()}. Types can be '
@@ -201,7 +207,9 @@ ap.add_argument('-f --filter',
                 dest='filter_string',
                 type=str,
                 action='store',
-                help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'')
+                help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'. Only datetime '
+                     'strings in ISO format can be filtered using the < and > operations. '
+                     'Es: datetime > \'2020-12-10T08:34:05+00:00\'')
 
 
 class ParsedArgs:
@@ -244,23 +252,29 @@ data = DataSet(args.source_file, args.source_type)
 
 class Operation(Enum):
     CONTAINS = auto()
-    IS = auto()
     EQ = auto()
+    NotEQ = auto()
     REGEX = auto()
     IREGEX = auto()
+    DateGT = auto()
+    DateLT = auto()
 
     @property
     def symbol(self) -> str:
         if self is Operation.CONTAINS:
             return 'contains'
-        elif self is Operation.IS:
-            return 'is'
         elif self is Operation.EQ:
             return '=='
+        elif self is Operation.NotEQ:
+            return '!='
         elif self is Operation.REGEX:
             return 'regex'
         elif self is Operation.IREGEX:
             return 'iregex'
+        elif self is Operation.DateGT:
+            return '>'
+        elif self is Operation.DateLT:
+            return '<'
         else:
             raise ValueError('Missing!!')
 
@@ -277,13 +291,13 @@ class Operation(Enum):
             def _opr(_arg: str):
                 return test_string in _arg
             return _opr
-        elif self is Operation.IS:
-            def _opr(_arg: str):
-                return test_string is _arg
-            return _opr
         elif self is Operation.EQ:
             def _opr(_arg: str):
                 return test_string == _arg
+            return _opr
+        elif self is Operation.NotEQ:
+            def _opr(_arg: str):
+                return test_string != _arg
             return _opr
         elif self is Operation.REGEX:
             def _opr(_arg: str):
@@ -294,6 +308,14 @@ class Operation(Enum):
             def _opr(_arg: str):
                 _re_pattern = re.compile(test_string, re.RegexFlag.I)
                 return _re_pattern.search(_arg) is not None
+            return _opr
+        elif self is Operation.DateGT:
+            def _opr(_arg: str):
+                return datetime.fromisoformat(_arg) > datetime.fromisoformat(test_string)
+            return _opr
+        elif self is Operation.DateLT:
+            def _opr(_arg: str):
+                return datetime.fromisoformat(_arg) < datetime.fromisoformat(test_string)
             return _opr
 
 
