@@ -6,10 +6,11 @@ import re
 from pathlib import Path
 import json
 from enum import Enum, auto
-from typing import Union, Optional, Iterator, Generator, Callable
+from typing import Union, Optional, Iterator, Callable
 
 
-EVIDENCE_OF_EXECUTION = "message contains 'Prefetch {' or message contains 'AppCompatCache' or \
+EVIDENCE_OF_EXECUTION = "\
+message contains 'Prefetch {' or message contains 'AppCompatCache' or \
 message contains 'typed the following cmd' or \
 message contains 'CMD typed' or \
 message contains 'Last run' or \
@@ -24,6 +25,62 @@ message contains '.pf' or \
 message contains 'was run' or \
 message contains 'UEME_' or \
 message contains '[PROCESS]'"
+EVIDENCE_OF_DELETION = "\
+message contains 'RECYCLE' or \
+message contains 'DELETED' or \
+message contains 'Deleted Registry' or \
+message contains '$Recycle.Bin'"
+EVIDENCE_OF_WEB_USAGE = "\
+message contains 'Expiration Time' or \
+message contains 'Cookie' or \
+message contains 'Visited' or \
+(message contains 'URL' and source_long not contains 'FILE') or \
+message contains 'Flash Cookie' or \
+(message contains 'LSO' and source_long not contains 'REG') or \
+message contains 'http://' or \
+message contains 'https://' or \
+message contains 'Location:' or \
+message contains 'times(s) HTTP' or \
+message contains 'Last Visited Time' or \
+source_long contains 'WEBHIST'"
+EVIDENCE_OF_FOLDER_OPENING = "\
+message contains 'lnk/shell_items' or \
+source_long contains 'File entry shell item' or \
+message contains 'BagMRU' or \
+message contains 'ShellNoRoam/Bags'"
+EVIDENCE_OF_FILE_OPENING = "\
+message contains 'visited file://' or \
+message contains 'CreateDate' or \
+message contains 'URL:file://' or \
+message contains 'Folder opened' or \
+message contains 'Shortcut LNK' or \
+message contains 'RecentDocs key' or \
+message contains 'Link target:' or \
+message contains 'File attribute flags' or \
+message contains 'Birth droid volume identifier:' or \
+message contains 'UserAssist entry' or \
+message contains '.lnk' or \
+message contains 'Recently opened file' or \
+message contains 'file of extension' or \
+(message contains 'Recently' and source_long not contains 'Firefox') or \
+(message contains 'file://' and source_long not contains 'Firefox') or \
+message contains 'RecentDocs'"
+EVIDENCE_OF_DEVICE_USB_USAGE = "\
+message contains 'MountPoints2' or \
+message contains 'volume mounted' or \
+message contains 'USB' or \
+message contains '/USB/Vid_' or \
+message contains 'Enum/USBSTOR/Disk' or \
+message contains 'RemovableMedia' or \
+message contains 'STORAGE/RemovableMedia' or \
+message contains 'drive mounted' or \
+message contains 'Drive last mounted' or \
+message contains 'SetupAPI Log'"
+EVIDENCE_OF_LOG_FILES = "\
+message contains 'EVT' or \
+message contains 'XP Firewall Log' or \
+message contains 'Event Level:' or \
+source_long contains'EVT'"
 
 
 def regex_options_string(string_list: list[str]) -> str:
@@ -111,7 +168,31 @@ ap.add_argument('-k --include-keys',
 ap.add_argument('--evidence-of-execution',
                 action='store_true',
                 dest='evidence_of_execution',
-                help='made filter')
+                help='pre-made filter')
+ap.add_argument('--evidence-of-deletion',
+                action='store_true',
+                dest='evidence_of_deletion',
+                help='pre-made filter')
+ap.add_argument('--evidence-of-web-usage',
+                action='store_true',
+                dest='evidence_of_web_usage',
+                help='pre-made filter')
+ap.add_argument('--evidence-of-folder-opening',
+                action='store_true',
+                dest='evidence_of_folder_opening',
+                help='pre-made filter')
+ap.add_argument('--evidence-of-file-opening',
+                action='store_true',
+                dest='evidence_of_file_opening',
+                help='pre-made filter')
+ap.add_argument('--evidence-of-device-usb-usage',
+                action='store_true',
+                dest='evidence_of_device_usb_usage',
+                help='pre-made filter')
+ap.add_argument('--evidence-of-log-files',
+                action='store_true',
+                dest='evidence_of_log_files',
+                help='pre-made filter')
 ap.add_argument('-f --filter',
                 dest='filter_string',
                 type=str,
@@ -134,6 +215,12 @@ class ParsedArgs:
             self.source_type = FileType.infer_form_file_name(self.source_file)
         self.filter_string = _parsed_args.filter_string
         self.evidence_of_execution = _parsed_args.evidence_of_execution
+        self.evidence_of_deletion = _parsed_args.evidence_of_deletion
+        self.evidence_of_web_usage = _parsed_args.evidence_of_web_usage
+        self.evidence_of_folder_opening = _parsed_args.evidence_of_folder_opening
+        self.evidence_of_file_opening = _parsed_args.evidence_of_file_opening
+        self.evidence_of_device_usb_usage = _parsed_args.evidence_of_device_usb_usage
+        self.evidence_of_log_files = _parsed_args.evidence_of_log_files
 
     def included_keys(self, data_set: DataSet) -> list[str]:
         if self._include_keys == 'ALL':
@@ -252,6 +339,18 @@ if __name__ == '__main__':
         filter_string = ''
         if args.evidence_of_execution:
             filter_string = EVIDENCE_OF_EXECUTION
+        elif args.evidence_of_deletion:
+            filter_string = EVIDENCE_OF_DELETION
+        elif args.evidence_of_web_usage:
+            filter_string = EVIDENCE_OF_WEB_USAGE
+        elif args.evidence_of_folder_opening:
+            filter_string = EVIDENCE_OF_FOLDER_OPENING
+        elif args.evidence_of_file_opening:
+            filter_string = EVIDENCE_OF_FILE_OPENING
+        elif args.evidence_of_device_usb_usage:
+            filter_string = EVIDENCE_OF_DEVICE_USB_USAGE
+        elif args.evidence_of_log_files:
+            filter_string = EVIDENCE_OF_LOG_FILES
         if args.filter_string is not None:
             if filter_string != '':
                 filter_string = f'({filter_string}) and '
