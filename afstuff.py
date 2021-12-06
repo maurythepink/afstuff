@@ -303,14 +303,14 @@ class BaseFilter:
 
     def match_on_dict(self, the_dict: dict) -> bool:
         for kk, vv in the_dict.items():
-            if (kk == self.key or kk == 'ANY') and self.operation_on_value(vv):
+            if (kk == self.key or self.key == 'ANY') and self.operation_on_value(vv):
                 return True
         return False
 
     @staticmethod
     def re_pattern_string() -> str:
         return r'(?P<whole_filter>(?P<key>' + \
-               regex_options_string(data.keys) + \
+               regex_options_string(data.keys + ['ANY']) + \
                r')(?P<not> not\b)? (?P<op>' + \
                regex_options_string([v.symbol for v in Operation]) + \
                r') (?P<q>[\"\'])(?P<filter>[^\"\']+)(?P=q))'
@@ -339,6 +339,7 @@ if __name__ == '__main__':
     if args._include_keys == 'LIST':
         print(', '.join(data.keys))
     else:
+        count = 0
         filter_string = ''
         if args.evidence_of_execution:
             filter_string = EVIDENCE_OF_EXECUTION
@@ -361,8 +362,10 @@ if __name__ == '__main__':
         filtered = phrase_filter_iterator(filter_string, data)
         for an_item in filtered:
             print(f'-' * 200)
+            count += 1
             for a_key in args.included_keys(data):
                 print(f'{a_key}\n\t{an_item.get(a_key)}\n')
+        print(f'\nEnd of search: found {count} records.')
 
 
 
