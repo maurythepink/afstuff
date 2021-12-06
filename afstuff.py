@@ -296,6 +296,7 @@ class BaseFilter:
         self.re_pattern = BaseFilter.re_pattern()
         _match_dict = self.re_pattern.search(base_string).groupdict()
         self.key = _match_dict.get('key')
+        self.not_operator = True if _match_dict.get('not') else False
         self.operation_on_value = Operation.from_symbol(_match_dict.get('op')).\
             get_operation_function(_match_dict.get('filter'))
         self.whole_filter = _match_dict.get('whole_filter')
@@ -310,7 +311,7 @@ class BaseFilter:
     def re_pattern_string() -> str:
         return r'(?P<whole_filter>(?P<key>' + \
                regex_options_string(data.keys) + \
-               r') (?P<op>' + \
+               r')(?P<not> not\b)? (?P<op>' + \
                regex_options_string([v.symbol for v in Operation]) + \
                r') (?P<q>[\"\'])(?P<filter>[^\"\']+)(?P=q))'
 
@@ -322,12 +323,14 @@ class BaseFilter:
 def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
         q_string = phrase_filter
         re_p_filter = BaseFilter.re_pattern()
-        f = re_p_filter.finditer(q_string)
         bfs = [BaseFilter(o.groupdict().get('whole_filter')) for o in re_p_filter.finditer(q_string)]
         for dict_item in data_set.json_data:
             loc_string: str = phrase_filter
             for bf in bfs:
-                loc_string = loc_string.replace(bf.whole_filter, 'True' if bf.match_on_dict(dict_item) else 'False')
+                replacement_string = 'True' if bf.match_on_dict(dict_item) else 'False'
+                if bf.not_operator:
+                    replacement_string = f'not {replacement_string}'
+                loc_string = loc_string.replace(bf.whole_filter, replacement_string)
             if eval(loc_string):
                 yield dict_item
 
