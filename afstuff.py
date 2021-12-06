@@ -193,6 +193,10 @@ ap.add_argument('--evidence-of-log-files',
                 action='store_true',
                 dest='evidence_of_log_files',
                 help='pre-made filter')
+ap.add_argument('--csv-output',
+                dest='csv_output',
+                action='store_true',
+                help='set the otput to be in \'csv\' format.')
 ap.add_argument('-f --filter',
                 dest='filter_string',
                 type=str,
@@ -221,6 +225,8 @@ class ParsedArgs:
         self.evidence_of_file_opening = _parsed_args.evidence_of_file_opening
         self.evidence_of_device_usb_usage = _parsed_args.evidence_of_device_usb_usage
         self.evidence_of_log_files = _parsed_args.evidence_of_log_files
+
+        self.csv_output = _parsed_args.csv_output
 
     def included_keys(self, data_set: DataSet) -> list[str]:
         if self._include_keys == 'ALL':
@@ -335,6 +341,13 @@ def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
                 yield dict_item
 
 
+def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
+    if first_row:
+        return ','.join(keys)
+    else:
+        return ','.join([entry[_the_key] for _the_key in keys])
+
+
 if __name__ == '__main__':
     if args._include_keys == 'LIST':
         print(', '.join(data.keys))
@@ -360,12 +373,18 @@ if __name__ == '__main__':
                 filter_string = f'({filter_string}) and '
             filter_string += args.filter_string
         filtered = phrase_filter_iterator(filter_string, data)
-        for an_item in filtered:
-            print(f'-' * 200)
-            count += 1
-            for a_key in args.included_keys(data):
-                print(f'{a_key}\n\t{an_item.get(a_key)}\n')
-        print(f'\nEnd of search: found {count} records.')
+        if args.csv_output:
+            _loc_keys = args.included_keys(data)
+            print(csv_parser(None, _loc_keys, True))
+            for an_item in filtered:
+                print(csv_parser(an_item, _loc_keys))
+        else:
+            for an_item in filtered:
+                print(f'-' * 200)
+                count += 1
+                for a_key in args.included_keys(data):
+                    print(f'{a_key}\n\t{an_item.get(a_key)}\n')
+            print(f'\nEnd of search: found {count} records.')
 
 
 
