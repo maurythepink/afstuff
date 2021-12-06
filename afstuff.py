@@ -252,8 +252,10 @@ if __name__ == '__main__':
         filter_string = ''
         if args.evidence_of_execution:
             filter_string = EVIDENCE_OF_EXECUTION
-        elif args.filter_string is not None:
-            filter_string = args.filter_string
+        if args.filter_string is not None:
+            if filter_string != '':
+                filter_string = f'({filter_string}) and '
+            filter_string += args.filter_string
         filtered = phrase_filter_iterator(filter_string, data)
         for an_item in filtered:
             print(f'-' * 200)
