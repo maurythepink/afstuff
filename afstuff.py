@@ -84,11 +84,18 @@ ap.add_argument('-t --source-type',
                 dest='source_type',
                 type=str,
                 help=f'Specify the source type ({FileType.names_string()})')
+ap.add_argument('-k --include-keys',
+                dest='include_keys',
+                type=str,
+                action='store',
+                default='ALL',
+                help='comma-separated keys to include in the output. Es: \'source,message,parser\'. If argument '
+                     '\'LIST\' is passed, it returns the list of available keys for the passed file.')
 ap.add_argument('-f --filter',
                 dest='filter_string',
                 type=str,
                 action='store',
-                help='filter string, like \'message contains \"https:\"\'')
+                help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'')
 
 
 class ParsedArgs:
@@ -98,12 +105,22 @@ class ParsedArgs:
         if not _source_file.exists():
             raise ValueError(f'File at path \'{_source_file}\' does not exist!')
         self.source_file = _source_file
+        self._include_keys: str = _parsed_args.include_keys
         _source_type = _parsed_args.source_type
         if _source_type is not None:
             self.source_type = FileType.from_string(_source_type)
         else:
             self.source_type = FileType.infer_form_file_name(self.source_file)
         self.filter_string = _parsed_args.filter_string
+
+    def included_keys(self, data_set: DataSet) -> list[str]:
+        if self._include_keys == 'ALL':
+            return data_set.keys
+        else:
+            _keys = self._include_keys.split(',')
+            if not set(_keys).issubset(set(data_set.keys)):
+                raise ValueError('Wrong list of keys!')
+            return _keys
 
 
 args = ParsedArgs()
@@ -167,31 +184,58 @@ class Operation(Enum):
 
 class BaseFilter:
     def __init__(self, base_string: str):
-        _re_pattern = re.compile(r'(?P<key>' +
-                                     regex_options_string(data.keys) +
-                                     r') (?P<op>' +
-                                     regex_options_string([v.symbol for v in Operation]) +
-                                     r') (?P<q>[\"\'])(?P<filter>[^(?P=q)]+)(?P=q)')
-        _match_dict = _re_pattern.search(base_string).groupdict()
+        self.re_pattern = BaseFilter.re_pattern()
+        _match_dict = self.re_pattern.search(base_string).groupdict()
         self.key = _match_dict.get('key')
         self.operation_on_value = Operation.from_symbol(_match_dict.get('op')).\
             get_operation_function(_match_dict.get('filter'))
+        self.whole_filter = _match_dict.get('whole_filter')
 
     def match_on_dict(self, the_dict: dict) -> bool:
         for kk, vv in the_dict.items():
-            if kk == self.key and self.operation_on_value(vv):
+            if (kk == self.key or kk == 'ANY') and self.operation_on_value(vv):
                 return True
         return False
 
+    @staticmethod
+    def re_pattern_string() -> str:
+        return r'(?P<whole_filter>(?P<key>' + \
+               regex_options_string(data.keys) + \
+               r') (?P<op>' + \
+               regex_options_string([v.symbol for v in Operation]) + \
+               r') (?P<q>[\"\'])(?P<filter>[^\"\']+)(?P=q))'
+
+    @staticmethod
+    def re_pattern() -> re.Pattern:
+        return re.compile(BaseFilter.re_pattern_string())
+
+
+# class PhraseFilter:
+#     def __init__(self, phrase: str):
 
 
 query = '(message contains "https:" or message contains "url") and date > "2020-01-01 00:00:00"'
 
 
 if __name__ == '__main__':
-    bs = BaseFilter(args.filter_string) if args.filter_string is not None else None
-    for element in data.json_data:
-        for key, value in element.items():
-            if bs is None or bs.match_on_dict(element):
-                print(f'{"-" * 100}\n{key}\n\t{value}')
+    if args._include_keys == 'LIST':
+        print(', '.join(data.keys))
+    if args.filter_string is not None:
+        q_string = args.filter_string
+        re_p_filter = BaseFilter.re_pattern()
+        f = re_p_filter.finditer(q_string)
+        bfs = [BaseFilter(o.groupdict().get('whole_filter')) for o in re_p_filter.finditer(q_string)]
+        for dict_item in data.json_data:
+            loc_string: str = args.filter_string
+            temp_str = ''
+            for bf in bfs:
+                loc_string = loc_string.replace(bf.whole_filter, 'True' if bf.match_on_dict(dict_item) else 'False')
+            for a_key in args.included_keys(data):
+                temp_str += f'{a_key}\n\t{dict_item.get(a_key)}\n'
+            if eval(loc_string):
+                print(f'{"-" * 200}')
+                print(temp_str)
+
+
+
 
