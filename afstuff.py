@@ -9,6 +9,23 @@ from enum import Enum, auto
 from typing import Union, Optional, Iterator, Generator, Callable
 
 
+EVIDENCE_OF_EXECUTION = "message contains 'Prefetch {' or message contains 'AppCompatCache' or \
+message contains 'typed the following cmd' or \
+message contains 'CMD typed' or \
+message contains 'Last run' or \
+message contains 'RunMRU' or \
+message contains 'MUICache' or \
+message contains 'UserAssist key' or \
+message contains 'Time of Launch' or \
+message contains 'Prefetch' or \
+message contains 'SHIMCACHE' or \
+message contains 'Scheduled' or \
+message contains '.pf' or \
+message contains 'was run' or \
+message contains 'UEME_' or \
+message contains '[PROCESS]'"
+
+
 def regex_options_string(string_list: list[str]) -> str:
     return '|'.join((f'({_s})' for _s in string_list))
 
@@ -91,6 +108,10 @@ ap.add_argument('-k --include-keys',
                 default='ALL',
                 help='comma-separated keys to include in the output. Es: \'source,message,parser\'. If argument '
                      '\'LIST\' is passed, it returns the list of available keys for the passed file.')
+ap.add_argument('--evidence-of-execution',
+                action='store_true',
+                dest='evidence_of_execution',
+                help='made filter')
 ap.add_argument('-f --filter',
                 dest='filter_string',
                 type=str,
@@ -112,6 +133,7 @@ class ParsedArgs:
         else:
             self.source_type = FileType.infer_form_file_name(self.source_file)
         self.filter_string = _parsed_args.filter_string
+        self.evidence_of_execution = _parsed_args.evidence_of_execution
 
     def included_keys(self, data_set: DataSet) -> list[str]:
         if self._include_keys == 'ALL':
@@ -210,31 +232,35 @@ class BaseFilter:
         return re.compile(BaseFilter.re_pattern_string())
 
 
-# class PhraseFilter:
-#     def __init__(self, phrase: str):
-
-
-query = '(message contains "https:" or message contains "url") and date > "2020-01-01 00:00:00"'
+def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
+        q_string = phrase_filter
+        re_p_filter = BaseFilter.re_pattern()
+        f = re_p_filter.finditer(q_string)
+        bfs = [BaseFilter(o.groupdict().get('whole_filter')) for o in re_p_filter.finditer(q_string)]
+        for dict_item in data_set.json_data:
+            loc_string: str = phrase_filter
+            for bf in bfs:
+                loc_string = loc_string.replace(bf.whole_filter, 'True' if bf.match_on_dict(dict_item) else 'False')
+            if eval(loc_string):
+                yield dict_item
 
 
 if __name__ == '__main__':
     if args._include_keys == 'LIST':
         print(', '.join(data.keys))
-    if args.filter_string is not None:
-        q_string = args.filter_string
-        re_p_filter = BaseFilter.re_pattern()
-        f = re_p_filter.finditer(q_string)
-        bfs = [BaseFilter(o.groupdict().get('whole_filter')) for o in re_p_filter.finditer(q_string)]
-        for dict_item in data.json_data:
-            loc_string: str = args.filter_string
-            temp_str = ''
-            for bf in bfs:
-                loc_string = loc_string.replace(bf.whole_filter, 'True' if bf.match_on_dict(dict_item) else 'False')
+    else:
+        filter_string = ''
+        if args.evidence_of_execution:
+            filter_string = EVIDENCE_OF_EXECUTION
+        elif args.filter_string is not None:
+            filter_string = args.filter_string
+        filtered = phrase_filter_iterator(filter_string, data)
+        for an_item in filtered:
+            print(f'-' * 200)
             for a_key in args.included_keys(data):
-                temp_str += f'{a_key}\n\t{dict_item.get(a_key)}\n'
-            if eval(loc_string):
-                print(f'{"-" * 200}')
-                print(temp_str)
+                print(f'{a_key}\n\t{an_item.get(a_key)}\n')
+
+
 
 
 
