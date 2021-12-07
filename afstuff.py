@@ -97,7 +97,7 @@ ap.add_argument('-k --include-keys',
                 default='ALL',
                 help='comma-separated keys to include in the output. Es: \'source,message,parser\'. If argument '
                      '\'LIST\' is passed, it returns the list of available keys for the passed file.')
-ap.add_argument('--csv-output',
+ap.add_argument('-c --csv-output',
                 dest='csv_output',
                 action='store_true',
                 help='set the otput to be in \'csv\' format.')
@@ -108,7 +108,7 @@ ap.add_argument('-f --filter',
                 help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'. Only datetime '
                      'strings in ISO format can be filtered using the < and > operations. '
                      'Es: datetime > \'2020-12-10T08:34:05+00:00\'')
-ap.add_argument('--filter-files',
+ap.add_argument('-x --filter-files',
                 dest='filter_files',
                 type=str,
                 nargs='*',
@@ -280,9 +280,9 @@ def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
 
 def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
     if first_row:
-        return ','.join(keys)
+        return ','.join(keys).strip()
     else:
-        return ','.join([entry[_the_key] for _the_key in keys])
+        return ','.join((entry[_the_key].strip() for _the_key in keys))
 
 
 if __name__ == '__main__':
