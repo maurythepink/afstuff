@@ -8,10 +8,21 @@ from pathlib import Path
 import json
 from enum import Enum, auto
 from typing import Union, Optional, Iterator, Callable
+from collections import namedtuple
+
+
+JMP_KEY = 'jumplist_meaning'
+JMP_RE_PATTERN = re.compile(r'Users/[\w\d]+/AppData/Roaming/Microsoft/Windows/Recent/'
+                            r'((Automatic)|(Custom))Destinations/(?P<code>[\w\d]+)\.automaticDestinations-ms')
+DISPLAY_NAME_KEY = 'display_name'
 
 
 def regex_options_string(string_list: list[str]) -> str:
     return '|'.join((f'({_s})' for _s in string_list))
+
+
+Jmp = namedtuple('Jmp', ['code', 'description'])
+JUMPLIST_CODES: Optional[list[Jmp]]
 
 
 class FileType(Enum):
@@ -48,15 +59,40 @@ class FileType(Enum):
         raise ValueError(f'Source type ({type_name}) not recognized. Choose one from: {FileType.names_string()}')
 
     def make_json_data(self, source_path: Path) -> Optional[Iterator[dict]]:
+        jmp_enabled = JUMPLIST_CODES is not None
+
+        def jumplist_meaning(display_name_value: str) -> Optional[str]:
+            _temp_list: list[str] = list()
+            for _jmp in JUMPLIST_CODES:
+                if display_name_value == _jmp.code:
+                    _temp_list.append(_jmp.description)
+            return None if len(_temp_list) == 0 else ' - '.join(_temp_list)
+
         with source_path.open('r') as source_file:
             if self is FileType.json:
                 _row_json_data = json.loads(source_file.read())
-                return (_value for _, _value in _row_json_data.items())
+                _the_generator = (_value for _, _value in _row_json_data.items())
+                if jmp_enabled:
+                    for _an_item in _the_generator:
+                        _display_name_value = _an_item.get(DISPLAY_NAME_KEY)
+                        if _display_name_value is not None:
+                            _an_item[JMP_KEY] = jumplist_meaning(_display_name_value)
+                        yield _an_item
+                else:
+                    return _the_generator
             elif self is FileType.l2tcsv or self is FileType.dynamic:
                 _lines = source_file.readlines()
                 _keys = _lines[0].split(',')
                 for _line in _lines[1:]:
-                    yield {_keys[_i]: _line.split(',')[_i] for _i in range(len(_keys))}
+                    _the_dict = {_keys[_i]: _line.split(',')[_i] for _i in range(len(_keys))}
+                    _the_dict[JMP_KEY] = None
+                    if jmp_enabled:
+                        if _the_dict.get(DISPLAY_NAME_KEY) is not None:
+                            _match = JMP_RE_PATTERN.search(_the_dict.get(DISPLAY_NAME_KEY))
+                            _jmp_code = None if _match is None else _match.groupdict().get('code')
+                            if _jmp_code is not None:
+                                _the_dict[JMP_KEY] = jumplist_meaning(_jmp_code)
+                    yield _the_dict
         return None
 
 
@@ -97,7 +133,7 @@ ap.add_argument('-k --include-keys',
                 default='ALL',
                 help='comma-separated keys to include in the output. Es: \'source,message,parser\'. If argument '
                      '\'LIST\' is passed, it returns the list of available keys for the passed file.')
-ap.add_argument('--csv-output',
+ap.add_argument('-c --csv-output',
                 dest='csv_output',
                 action='store_true',
                 help='set the otput to be in \'csv\' format.')
@@ -108,12 +144,16 @@ ap.add_argument('-f --filter',
                 help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'. Only datetime '
                      'strings in ISO format can be filtered using the < and > operations. '
                      'Es: datetime > \'2020-12-10T08:34:05+00:00\'')
-ap.add_argument('--filter-files',
+ap.add_argument('-x --filter-files',
                 dest='filter_files',
                 type=str,
                 nargs='*',
                 help='pass any text files witch contains filters, they will be processed together with an'
                      ' \'and\' joint.')
+ap.add_argument('-j --jumplist-parser',
+                dest='jumplist',
+                action='store_true',
+                help=F'enable the jumplist parser and add a \'{JMP_KEY}\' field in the output')
 ap.add_argument('--debug',
                 dest='debug',
                 action='store_true')
@@ -136,6 +176,16 @@ class ParsedArgs:
         self.csv_output = _parsed_args.csv_output
         self.debug = _parsed_args.debug is True
         self._filter_files: Optional[list[str]] = _parsed_args.filter_files
+        self.jmp = _parsed_args.jumplist
+        self._jmp_codes: Optional[Jmp] = None
+
+        if self.jmp:
+            global JUMPLIST_CODES
+            JUMPLIST_CODES = []
+            with Path('jumplist_codes.txt').open('r') as _jmp_file:
+                for _a_line in _jmp_file.readlines():
+                    _jmp_couple_strings = _a_line.split('|')
+                    JUMPLIST_CODES.append(Jmp(_jmp_couple_strings[0].strip(), _jmp_couple_strings[1].strip()))
 
     def file_filters(self) -> Iterator[str]:
         for a_str in self._filter_files:
@@ -161,6 +211,8 @@ class ParsedArgs:
             return data_set.keys
         else:
             _keys = self._include_keys.split(',')
+            if self.jmp:
+                _keys.append(JMP_KEY)
             if not set(_keys).issubset(set(data_set.keys)):
                 raise ValueError('Wrong list of keys!')
             return _keys
@@ -280,14 +332,14 @@ def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
 
 def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
     if first_row:
-        return ','.join(keys)
+        return ','.join(keys).strip()
     else:
-        return ','.join([entry[_the_key] for _the_key in keys])
+        return ','.join((entry[_the_key].strip() for _the_key in keys))
 
 
 if __name__ == '__main__':
     if args.debug:
-        print(args.complete_filter)
+        pass
     elif args._include_keys == 'LIST':
         print(', '.join(data.keys))
     else:
