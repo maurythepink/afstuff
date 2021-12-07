@@ -219,14 +219,9 @@ class Operation(Enum):
             def _opr(_arg: str):
                 return test_string != _arg
             return _opr
-        elif self is Operation.REGEX:
+        elif self is Operation.REGEX or self is Operation.IREGEX:
             def _opr(_arg: str):
-                _re_pattern = re.compile(test_string)
-                return _re_pattern.search(_arg) is not None
-            return _opr
-        elif self is Operation.IREGEX:
-            def _opr(_arg: str):
-                _re_pattern = re.compile(test_string, re.RegexFlag.I)
+                _re_pattern = re.compile(test_string, re.RegexFlag.I if self is Operation.IREGEX else 0)
                 return _re_pattern.search(_arg) is not None
             return _opr
         elif self is Operation.DateGT:
