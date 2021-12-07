@@ -108,7 +108,7 @@ class DataSet:
     @property
     def keys(self) -> list[str]:
         for _item in self.json_data:
-            return list(_item.keys())
+            return [_a_key.strip() for _a_key in _item.keys()]
 
 
 ap = argparse.ArgumentParser(prog='AF Stuff', usage='this tool is a facility for applying filters on plaso psort '
@@ -339,7 +339,7 @@ def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
 
 if __name__ == '__main__':
     if args.debug:
-        pass
+        print(args.included_keys(data))
     elif args._include_keys == 'LIST':
         print(', '.join(data.keys))
     else:
