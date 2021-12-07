@@ -1,0 +1,1 @@
+message contains 'lnk/shell_items' or source_long contains 'File entry shell item' or message contains 'BagMRU' or message contains 'ShellNoRoam/Bags'

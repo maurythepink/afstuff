@@ -1,0 +1,1 @@
+message contains 'EVT' or message contains 'XP Firewall Log' or message contains 'Event Level:' or source_long contains 'EVT'

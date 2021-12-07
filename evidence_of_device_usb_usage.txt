@@ -1,0 +1,1 @@
+message contains 'MountPoints2' or message contains 'volume mounted' or message contains 'USB' or message contains '/USB/Vid_' or message contains 'Enum/USBSTOR/Disk' or message contains 'RemovableMedia' or message contains 'STORAGE/RemovableMedia' or message contains 'drive mounted' or message contains 'Drive last mounted' or message contains 'SetupAPI Log'

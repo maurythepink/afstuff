@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3.9
 
 
 from datetime import datetime
@@ -10,7 +10,7 @@ from enum import Enum, auto
 from typing import Union, Optional, Iterator, Callable
 
 
-EVIDENCE_OF_EXECUTION = "\
+EVIDENCE_OF_EXECUTION = "(\
 message contains 'Prefetch {' or message contains 'AppCompatCache' or \
 message contains 'typed the following cmd' or \
 message contains 'CMD typed' or \
@@ -25,13 +25,13 @@ message contains 'Scheduled' or \
 message contains '.pf' or \
 message contains 'was run' or \
 message contains 'UEME_' or \
-message contains '[PROCESS]'"
-EVIDENCE_OF_DELETION = "\
+message contains '[PROCESS]')"
+EVIDENCE_OF_DELETION = "(\
 message contains 'RECYCLE' or \
 message contains 'DELETED' or \
 message contains 'Deleted Registry' or \
-message contains '$Recycle.Bin'"
-EVIDENCE_OF_WEB_USAGE = "\
+message contains '$Recycle.Bin')"
+EVIDENCE_OF_WEB_USAGE = "(\
 message contains 'Expiration Time' or \
 message contains 'Cookie' or \
 message contains 'Visited' or \
@@ -43,13 +43,13 @@ message contains 'https://' or \
 message contains 'Location:' or \
 message contains 'times(s) HTTP' or \
 message contains 'Last Visited Time' or \
-source_long contains 'WEBHIST'"
-EVIDENCE_OF_FOLDER_OPENING = "\
+source_long contains 'WEBHIST')"
+EVIDENCE_OF_FOLDER_OPENING = "(\
 message contains 'lnk/shell_items' or \
 source_long contains 'File entry shell item' or \
 message contains 'BagMRU' or \
-message contains 'ShellNoRoam/Bags'"
-EVIDENCE_OF_FILE_OPENING = "\
+message contains 'ShellNoRoam/Bags')"
+EVIDENCE_OF_FILE_OPENING = "(\
 message contains 'visited file://' or \
 message contains 'CreateDate' or \
 message contains 'URL:file://' or \
@@ -65,8 +65,8 @@ message contains 'Recently opened file' or \
 message contains 'file of extension' or \
 (message contains 'Recently' and source_long not contains 'Firefox') or \
 (message contains 'file://' and source_long not contains 'Firefox') or \
-message contains 'RecentDocs'"
-EVIDENCE_OF_DEVICE_USB_USAGE = "\
+message contains 'RecentDocs')"
+EVIDENCE_OF_DEVICE_USB_USAGE = "(\
 message contains 'MountPoints2' or \
 message contains 'volume mounted' or \
 message contains 'USB' or \
@@ -76,12 +76,12 @@ message contains 'RemovableMedia' or \
 message contains 'STORAGE/RemovableMedia' or \
 message contains 'drive mounted' or \
 message contains 'Drive last mounted' or \
-message contains 'SetupAPI Log'"
-EVIDENCE_OF_LOG_FILES = "\
+message contains 'SetupAPI Log')"
+EVIDENCE_OF_LOG_FILES = "(\
 message contains 'EVT' or \
 message contains 'XP Firewall Log' or \
 message contains 'Event Level:' or \
-source_long contains 'EVT'"
+source_long contains 'EVT')"
 
 
 def regex_options_string(string_list: list[str]) -> str:
@@ -210,6 +210,15 @@ ap.add_argument('-f --filter',
                 help='filter string, like \'message contains \"https:\"\', \'ANY contains "google"\'. Only datetime '
                      'strings in ISO format can be filtered using the < and > operations. '
                      'Es: datetime > \'2020-12-10T08:34:05+00:00\'')
+ap.add_argument('--filter-files',
+                dest='filter_files',
+                type=str,
+                nargs='*',
+                help='pass any text files witch contains filters, they will be processed together with an'
+                     ' \'and\' joint.')
+ap.add_argument('--debug',
+                dest='debug',
+                action='store_true')
 
 
 class ParsedArgs:
@@ -235,6 +244,27 @@ class ParsedArgs:
         self.evidence_of_log_files = _parsed_args.evidence_of_log_files
 
         self.csv_output = _parsed_args.csv_output
+        self.debug = _parsed_args.debug is True
+        self._filter_files: Optional[list[str]] = _parsed_args.filter_files
+
+    def file_filters(self) -> Iterator[str]:
+        for a_str in self._filter_files:
+            _path = Path(a_str)
+            if not _path.exists():
+                raise ValueError(f'file at path \'{_path}\' does not exist!!')
+            with _path.open('r') as _filter_file:
+                yield f'({_filter_file.read().strip()})'
+
+    @property
+    def complete_filter(self) -> Optional[str]:
+        if self.filter_string is None and self._filter_files is None:
+            return None
+        _the_str = ''
+        if self._filter_files is not None:
+            _the_str = f'{" and ".join(self.file_filters())}'
+        if self.filter_string is not None:
+            _the_str = self.filter_string if self._filter_files is None else f'{_the_str} and ({self.filter_string})'
+        return _the_str
 
     def included_keys(self, data_set: DataSet) -> list[str]:
         if self._include_keys == 'ALL':
@@ -371,30 +401,13 @@ def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
 
 
 if __name__ == '__main__':
-    if args._include_keys == 'LIST':
+    if args.debug:
+        print(args.complete_filter)
+    elif args._include_keys == 'LIST':
         print(', '.join(data.keys))
     else:
         count = 0
-        filter_string = ''
-        if args.evidence_of_execution:
-            filter_string = EVIDENCE_OF_EXECUTION
-        elif args.evidence_of_deletion:
-            filter_string = EVIDENCE_OF_DELETION
-        elif args.evidence_of_web_usage:
-            filter_string = EVIDENCE_OF_WEB_USAGE
-        elif args.evidence_of_folder_opening:
-            filter_string = EVIDENCE_OF_FOLDER_OPENING
-        elif args.evidence_of_file_opening:
-            filter_string = EVIDENCE_OF_FILE_OPENING
-        elif args.evidence_of_device_usb_usage:
-            filter_string = EVIDENCE_OF_DEVICE_USB_USAGE
-        elif args.evidence_of_log_files:
-            filter_string = EVIDENCE_OF_LOG_FILES
-        if args.filter_string is not None:
-            if filter_string != '':
-                filter_string = f'({filter_string}) and '
-            filter_string += args.filter_string
-        filtered = phrase_filter_iterator(filter_string, data)
+        filtered = data.json_data if args.complete_filter is None else phrase_filter_iterator(args.complete_filter, data)
         if args.csv_output:
             _loc_keys = args.included_keys(data)
             print(csv_parser(None, _loc_keys, True))
