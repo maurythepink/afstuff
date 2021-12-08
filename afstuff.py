@@ -22,7 +22,7 @@ def regex_options_string(string_list: list[str]) -> str:
 
 
 Jmp = namedtuple('Jmp', ['code', 'description'])
-JUMPLIST_CODES: Optional[list[Jmp]]
+JUMPLIST_CODES: Optional[list[Jmp]] = None
 
 
 class FileType(Enum):
@@ -82,11 +82,11 @@ class FileType(Enum):
                     return _the_generator
             elif self is FileType.l2tcsv or self is FileType.dynamic:
                 _lines = source_file.readlines()
-                _keys = _lines[0].split(',')
+                _keys = _lines[0].strip().split(',')
                 for _line in _lines[1:]:
-                    _the_dict = {_keys[_i]: _line.split(',')[_i] for _i in range(len(_keys))}
-                    _the_dict[JMP_KEY] = None
+                    _the_dict = {_keys[_i]: _line.strip('\n').split(',')[_i] for _i in range(len(_keys))}
                     if jmp_enabled:
+                        _the_dict[JMP_KEY] = None
                         if _the_dict.get(DISPLAY_NAME_KEY) is not None:
                             _match = JMP_RE_PATTERN.search(_the_dict.get(DISPLAY_NAME_KEY))
                             _jmp_code = None if _match is None else _match.groupdict().get('code')
@@ -108,7 +108,7 @@ class DataSet:
     @property
     def keys(self) -> list[str]:
         for _item in self.json_data:
-            return [_a_key.strip() for _a_key in _item.keys()]
+            return list(_item.keys())
 
 
 ap = argparse.ArgumentParser(prog='AF Stuff', usage='this tool is a facility for applying filters on plaso psort '
@@ -211,8 +211,6 @@ class ParsedArgs:
             return data_set.keys
         else:
             _keys = self._include_keys.split(',')
-            if self.jmp:
-                _keys.append(JMP_KEY)
             if not set(_keys).issubset(set(data_set.keys)):
                 raise ValueError('Wrong list of keys!')
             return _keys
@@ -332,9 +330,9 @@ def phrase_filter_iterator(phrase_filter: str, data_set: DataSet) -> Iterator:
 
 def csv_parser(entry: Optional[dict], keys: list[str], first_row=False) -> str:
     if first_row:
-        return ','.join(keys).strip()
+        return ','.join(keys)
     else:
-        return ','.join((entry[_the_key].strip() for _the_key in keys))
+        return ','.join((entry[_the_key] for _the_key in keys))
 
 
 if __name__ == '__main__':
@@ -344,9 +342,10 @@ if __name__ == '__main__':
         print(', '.join(data.keys))
     else:
         count = 0
-        filtered = data.json_data if args.complete_filter is None else phrase_filter_iterator(args.complete_filter, data)
+        filtered = data.json_data if args.complete_filter is None \
+            else phrase_filter_iterator(args.complete_filter, data)
         if args.csv_output:
-            _loc_keys = args.included_keys(data)
+            _loc_keys = [_a_key.strip() for _a_key in args.included_keys(data)]
             print(csv_parser(None, _loc_keys, True))
             for an_item in filtered:
                 print(csv_parser(an_item, _loc_keys))
